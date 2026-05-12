@@ -1,0 +1,88 @@
+name: verified-bot-commit
+description: GitHub Action for creating signed and verified bot commits
+author: Kyle Colantonio
+
+branding:
+  icon: check
+  color: green
+
+inputs:
+  repository:
+    description: The target repository
+    required: false
+    default: ${{ github.repository }}
+  ref:
+    description: The ref to push the commit to
+    required: false
+    default: ${{ github.ref }}
+  files:
+    description: Files/Glob patterns to include with the commit
+    required: true
+  message:
+    description: Message for the commit
+    required: false
+  message-file:
+    description: File to use for the commit message
+    required: false
+  auto-stage:
+    description: Stage all changed files for committing
+    required: false
+    default: 'true'
+  update-local:
+    description: Update local branch after committing
+    required: false
+    default: 'true'
+  force-push:
+    description: Force push the commit
+    required: false
+    default: 'false'
+  if-no-commit:
+    description: Set the behavior when no commit is made
+    required: false
+    default: 'warning'
+  allow-empty-commit:
+    description: Allow creating an empty commit if there are no changes
+    required: false
+    default: 'false'
+  no-throttle:
+    description: Disable the throttling mechanism during requests
+    required: false
+    default: 'false'
+  no-retry:
+    description: Disable the retry mechanism during requests
+    required: false
+    default: 'false'
+  max-retries:
+    description: Number of retries to attempt if a request fails
+    required: false
+    default: '1'
+  follow-symlinks:
+    description: Follow symbolic links when globbing files
+    required: false
+    default: 'true'
+  workspace:
+    description: Directory containing checked out files
+    required: false
+    default: ${{ github.workspace }}
+  api-url:
+    description: Base URL for the GitHub API
+    required: false
+    default: ${{ github.api_url }}
+  token:
+    description: GitHub Token for REST API access
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  blobs:
+    description: A JSON list of blob SHAs within the tree
+  tree:
+    description: SHA of the underlying tree for the commit
+  commit:
+    description: SHA of the commit itself
+  ref:
+    description: SHA for the ref that was updated (same as commit)
+
+runs:
+  using: node24
+  main: dist/index.js
