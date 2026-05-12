@@ -1,0 +1,7 @@
+{
+  "owner": "iarekylew00t",
+  "name": "verified-bot-commit",
+  "visibility": "internal",
+  "description": "GitHub Action for creating signed and verified bot commits",
+  "block_publish": false
+}
