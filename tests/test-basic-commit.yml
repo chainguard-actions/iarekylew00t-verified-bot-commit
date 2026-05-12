@@ -1,0 +1,37 @@
+name: Test basic commit with files and message
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/act-harness
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create a test file to commit
+        run: |
+          echo "test content $(date)" > /tmp/test-commit-file.txt
+          cp /tmp/test-commit-file.txt "$GITHUB_WORKSPACE/test-commit-file.txt"
+
+      - id: action
+        uses: .
+        with:
+          files: test-commit-file.txt
+          message: "chore: test commit from act"
+          if-no-commit: warning
+          auto-stage: "true"
+          update-local: "false"
+        continue-on-error: true
+
+      - name: Assert action ran without unexpected failure
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" = "failure" ]; then
+            echo "FAIL: action failed unexpectedly"
+            exit 1
+          fi
+          echo "PASS: action completed with outcome=$OUTCOME"

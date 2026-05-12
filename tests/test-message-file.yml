@@ -1,0 +1,37 @@
+name: Test commit with message-file input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/act-harness
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create commit message file and test file
+        run: |
+          echo "chore: automated test commit via message-file" > "$GITHUB_WORKSPACE/commit-message.txt"
+          echo "test content for message-file scenario" > "$GITHUB_WORKSPACE/test-msg-file-content.txt"
+
+      - id: action
+        uses: .
+        with:
+          files: test-msg-file-content.txt
+          message-file: commit-message.txt
+          if-no-commit: warning
+          auto-stage: "true"
+          update-local: "false"
+        continue-on-error: true
+
+      - name: Assert action ran without unexpected failure
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" = "failure" ]; then
+            echo "FAIL: action failed unexpectedly when using message-file input"
+            exit 1
+          fi
+          echo "PASS: action completed with outcome=$OUTCOME"

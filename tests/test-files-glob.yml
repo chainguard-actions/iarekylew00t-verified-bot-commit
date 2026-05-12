@@ -1,0 +1,40 @@
+name: Test commit with glob file patterns
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/act-harness
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create test files matching a glob pattern
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/test-output"
+          echo "file one content" > "$GITHUB_WORKSPACE/test-output/file1.txt"
+          echo "file two content" > "$GITHUB_WORKSPACE/test-output/file2.txt"
+
+      - id: action
+        uses: .
+        with:
+          files: test-output/*.txt
+          message: "chore: commit glob-matched files"
+          if-no-commit: warning
+          auto-stage: "true"
+          update-local: "false"
+          no-retry: "true"
+          follow-symlinks: "true"
+        continue-on-error: true
+
+      - name: Assert action ran without unexpected failure
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" = "failure" ]; then
+            echo "FAIL: action failed unexpectedly when using glob file patterns"
+            exit 1
+          fi
+          echo "PASS: action completed with outcome=$OUTCOME"
