@@ -1,0 +1,31 @@
+name: Test commit with message-file input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/act-harness
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Create a commit message file and a test file
+        run: |
+          echo "chore: test commit using message-file input" > "$GITHUB_WORKSPACE/commit-message.txt"
+          echo "test content from message-file test $(date)" > "$GITHUB_WORKSPACE/test-msgfile-content.txt"
+      - id: action
+        uses: .
+        with:
+          files: test-msgfile-content.txt
+          message-file: commit-message.txt
+          if-no-commit: warning
+          allow-empty-commit: "false"
+          token: ${{ github.token }}
+      - name: Assert action completed
+        env:
+          COMMIT: ${{ steps.action.outputs.commit }}
+          TREE: ${{ steps.action.outputs.tree }}
+        run: |
+          echo "commit: $COMMIT"
+          echo "tree: $TREE"
+          echo "PASS: action completed with message-file input"

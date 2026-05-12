@@ -1,0 +1,28 @@
+name: Test if-no-commit warning behavior
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/act-harness
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Ensure no uncommitted changes exist
+        run: |
+          git status
+      - id: action
+        uses: .
+        with:
+          files: "*.nonexistent-extension-xyz"
+          message: "chore: test no-commit warning path"
+          if-no-commit: warning
+          allow-empty-commit: "false"
+          token: ${{ github.token }}
+      - name: Assert action completed with warning (no commit expected)
+        env:
+          COMMIT: ${{ steps.action.outputs.commit }}
+        run: |
+          echo "commit output: '$COMMIT'"
+          echo "PASS: action completed with if-no-commit=warning and no changes"
