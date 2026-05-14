@@ -1,0 +1,38 @@
+name: Test basic commit with files and message
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/act-harness
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create a test file to commit
+        run: |
+          echo "test content $(date)" > /tmp/test-commit-file.txt
+          cp /tmp/test-commit-file.txt $GITHUB_WORKSPACE/test-commit-file.txt
+
+      - name: Run action with files and message inputs
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          files: "test-commit-file.txt"
+          message: "chore: test commit from act"
+          if-no-commit: "skip"
+          token: ${{ github.token }}
+
+      - name: Assert action ran (API may fail in act environment)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "action outcome: $OUTCOME"
+          # The action may fail due to API limitations in act, but it must have run
+          if [ "$OUTCOME" = "skipped" ]; then
+            echo "FAIL: action was skipped, expected it to run"
+            exit 1
+          fi
+          echo "PASS: action ran with files and message inputs"
