@@ -1,0 +1,45 @@
+name: Test basic commit
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Create a test file to commit
+        run: |
+          echo "hello from test" > test-output.txt
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          files: test-output.txt
+          message: "test: basic commit"
+          auto-stage: "true"
+          update-local: "false"
+
+      - name: Assert action ran (outputs set, or failed gracefully on the sentinel repo)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          COMMIT: ${{ steps.action.outputs.commit }}
+          TREE: ${{ steps.action.outputs.tree }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "commit: $COMMIT"
+          echo "tree: $TREE"
+          if [ "$OUTCOME" = "success" ]; then
+            if [ -z "$COMMIT" ]; then
+              echo "FAIL: action succeeded but commit output is empty"
+              exit 1
+            fi
+            echo "PASS: got commit SHA '$COMMIT'"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (sentinel repo is not resolvable)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

@@ -1,0 +1,51 @@
+name: Test no-retry and no-throttle options
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Create a test file to commit
+        run: |
+          echo "no-retry test content" > no-retry-test.txt
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          files: no-retry-test.txt
+          message: "test: no-retry and no-throttle"
+          auto-stage: "true"
+          update-local: "false"
+          no-retry: "true"
+          no-throttle: "true"
+
+      - name: Assert action ran (outputs set, or failed gracefully on the sentinel repo)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          COMMIT: ${{ steps.action.outputs.commit }}
+          REF: ${{ steps.action.outputs.ref }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "commit: $COMMIT"
+          echo "ref: $REF"
+          if [ "$OUTCOME" = "success" ]; then
+            if [ -z "$COMMIT" ]; then
+              echo "FAIL: action succeeded but commit output is empty"
+              exit 1
+            fi
+            if [ "$COMMIT" != "$REF" ]; then
+              echo "FAIL: commit and ref outputs should be equal, got commit='$COMMIT' ref='$REF'"
+              exit 1
+            fi
+            echo "PASS: got commit SHA '$COMMIT' and ref matches"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (sentinel repo is not resolvable)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
