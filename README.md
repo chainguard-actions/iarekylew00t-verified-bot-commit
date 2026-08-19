@@ -15,6 +15,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 | v2.3.2 | [`v2.3.2`](https://github.com/chainguard-actions/iarekylew00t-verified-bot-commit/tree/v2.3.2) | [`5b4e885`](https://github.com/iarekylew00t/verified-bot-commit/commit/5b4e8852dc472093935b8debcb81459bb79f7986) |
 | v2.3.3 | [`v2.3.3`](https://github.com/chainguard-actions/iarekylew00t-verified-bot-commit/tree/v2.3.3) | [`33985d4`](https://github.com/iarekylew00t/verified-bot-commit/commit/33985d44b7719dcaf0b854a0f4b0caad9bdc5b86) |
 | v2.3.4 | [`v2.3.4`](https://github.com/chainguard-actions/iarekylew00t-verified-bot-commit/tree/v2.3.4) | [`1ccc6af`](https://github.com/iarekylew00t/verified-bot-commit/commit/1ccc6afd0f789e8442cff7deec3e9856a693cc7e) |
+| v2.3.5 | [`v2.3.5`](https://github.com/chainguard-actions/iarekylew00t-verified-bot-commit/tree/v2.3.5) | [`42a042b`](https://github.com/iarekylew00t/verified-bot-commit/commit/42a042b0407248f3c0acac00c389e729e3476e86) |
 
 ## Privacy
 
