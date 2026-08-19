@@ -1,0 +1,510 @@
+name: Action Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  test-app:
+    name: Test action with GH App
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TEST_BRANCH: test-app-ubuntu-${{ github.run_id }}
+    steps:
+      - name: Create GitHub App Token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          client-id: ${{ secrets.TEST_GH_APP_ID }}
+          private-key: ${{ secrets.TEST_GH_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Checkout repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Create test branch and tag
+        id: branch
+        shell: bash
+        run: |
+          git checkout -b "$TEST_BRANCH"
+          git push -u origin "$TEST_BRANCH"
+          echo -e "\n### $(date -Iseconds)" | tee -a README.md
+          date -Iseconds | tee date.txt
+
+      - name: Commit with error and without changes
+        id: commit
+        uses: ./
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          ref: ${{ env.TEST_BRANCH }}
+          message: 'test: ${{ github.ref }} @ ${{ github.sha }}'
+          if-no-commit: error
+          files: |
+            **
+
+      - name: Verify GPG signature
+        shell: bash
+        env:
+          COMMIT: ${{ steps.commit.outputs.commit }}
+          GPG_KEY_ID: 968479A1AFF927E37D1A566BB5690EEEBB952194
+        run: |
+          git log --show-signature HEAD^..HEAD
+          curl -fSsL "https://github.com/web-flow.gpg" | gpg --import
+          echo "$GPG_KEY_ID:6" | gpg --import-ownertrust
+          git verify-commit "$COMMIT"
+
+      - name: Delete test branches
+        if: always()
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" == "pull_request" ]; then
+            git checkout "${GITHUB_REF/#refs\//}" || true
+          else
+            git checkout "$GITHUB_REF_NAME" || true
+          fi
+          git push -u origin --delete "$TEST_BRANCH" || true
+
+  test:
+    name: Test action
+    runs-on: ${{ matrix.os }}-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [macos, ubuntu, windows]
+    permissions:
+      contents: write
+    env:
+      TEST_BRANCH: test-${{ matrix.os }}-${{ github.run_id }}
+      TEST_TAG: tag-${{ matrix.os }}-${{ github.run_id }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Create test branch and tag
+        id: branch
+        shell: bash
+        run: |
+          git checkout -b "$TEST_BRANCH"
+          git push -u origin "$TEST_BRANCH"
+          git tag "$TEST_TAG"
+          git push -u origin "$TEST_TAG"
+
+      - name: Commit with error and without changes
+        id: failure
+        uses: ./
+        continue-on-error: true
+        with:
+          ref: ${{ env.TEST_BRANCH }}
+          message: 'test: ${{ github.ref }} @ ${{ github.sha }}'
+          if-no-commit: error
+          files: |
+            README.md
+
+      - name: Verify branch
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.failure.outcome }}
+        run: |
+          git status
+          git remote update
+          if git status -uno "$TEST_BRANCH" | grep -q "branch is behind" ; then
+            echo "::error::Found unexpectted commit on $TEST_BRANCH"
+            exit 1
+          fi
+
+          if [ "$OUTCOME" != "failure" ]; then
+            echo "::error::Expected Action to result in failure"
+            exit 1
+          fi
+
+      - name: Capture HEAD before empty commit
+        id: before-empty
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Commit with allow-empty-commit and without changes
+        id: empty-commit
+        uses: ./
+        with:
+          ref: ${{ env.TEST_BRANCH }}
+          message: 'test(empty): ${{ github.ref }} @ ${{ github.sha }}'
+          allow-empty-commit: true
+          files: ''
+
+      - name: Verify empty commit
+        shell: bash
+        env:
+          COMMIT: ${{ steps.empty-commit.outputs.commit }}
+          PREV_HEAD: ${{ steps.before-empty.outputs.sha }}
+        run: |
+          if [ -z "$COMMIT" ]; then
+            echo "::error::Expected a commit SHA but got none"
+            exit 1
+          fi
+
+          if [ "$COMMIT" = "$PREV_HEAD" ]; then
+            echo "::error::Expected a new commit SHA but got the same as before ($PREV_HEAD)"
+            exit 1
+          fi
+
+          COUNT=$(git diff-tree --no-commit-id --name-only -r "$COMMIT" | wc -l)
+          if [ "$COUNT" -ne 0 ]; then
+            echo "::error::Expected 0 committed files but got $COUNT"
+            exit 1
+          fi
+
+      - name: Generate file changes
+        shell: bash
+        run: |
+          echo -e "\n### $(date -Iseconds)" | tee -a README.md
+          date -Iseconds | tee date.txt
+          date -Iseconds | tee test-ignore.txt
+          date -Iseconds | tee .github/.test-file.txt
+          echo "$GITHUB_RUN_ID" | tee __tests__/ignore/test-abcdef.txt
+          echo "$GITHUB_RUN_ID" | tee src/test.txt
+          echo "$GITHUB_RUN_ID" | tee src/test2.txt
+          echo "uncommitted file" | tee blah.txt
+          mkdir -p "$TEST_BRANCH"
+          for i in {1..100}; do
+            echo "$i-$GITHUB_RUN_ID-$RANDOM" | tee "$TEST_BRANCH/$i-$GITHUB_RUN_ID"
+          done
+          mkdir -p "$GITHUB_RUN_ID"
+          for i in {1..10}; do
+            echo "$i-$TEST_BRANCH-$RANDOM" | tee "$GITHUB_RUN_ID/$i-$TEST_BRANCH"
+          done
+
+      - name: Commit changes that don't match
+        uses: ./
+        with:
+          ref: ${{ env.TEST_BRANCH }}
+          message: 'test: ${{ github.ref }} @ ${{ github.sha }}'
+          files: |
+            something-that-doesnt-exist.txt
+
+      - name: Verify branch
+        shell: bash
+        run: |
+          git status
+          git remote update
+          if git status -uno "$TEST_BRANCH" | grep -q "branch is behind" ; then
+            echo "::error::Found unexpectted commit on $TEST_BRANCH"
+            exit 1
+          fi
+
+      - name: Commit changes to tag
+        id: tag
+        uses: ./
+        with:
+          ref: tags/${{ env.TEST_TAG }}
+          message: 'test: ${{ github.ref }} @ ${{ github.sha }}'
+          files: |
+            README.md
+
+      - name: Verify tag
+        shell: bash
+        env:
+          EXPECTED_COMMIT: ${{ steps.tag.outputs.commit }}
+        run: |
+          git status
+          git fetch --tags -f
+          CURRENT_COMMIT=$(git rev-list -n1 "$TEST_TAG")
+          if [ "$CURRENT_COMMIT" != "$EXPECTED_COMMIT" ] ; then
+            echo "::error::$TEST_TAG was at $CURRENT_COMMIT but expected $EXPECTED_COMMIT"
+            exit 1
+          fi
+
+      - name: Manually stage files
+        shell: bash
+        run: |
+          git restore --staged .
+          git add "$GITHUB_RUN_ID/"
+          git status
+
+      - name: Commit all staged changes
+        id: staged
+        uses: ./
+        with:
+          ref: ${{ env.TEST_BRANCH }}
+          message: 'staged: ${{ github.ref }} @ ${{ github.sha }}'
+          auto-stage: false
+          files: |
+            **
+
+      - name: Verify file changes
+        shell: bash
+        env:
+          COMMIT: ${{ steps.staged.outputs.commit }}
+        run: |
+          git status
+          RC=0
+
+          FILES=$(git diff-tree --no-commit-id --name-only -r "$COMMIT")
+          COUNT=$(echo "$FILES" | wc -l)
+          echo -e "Committed files: $COUNT\n$FILES"
+          if [ "$COUNT" -ne 10 ]; then
+            echo "::error::Expected 10 committed files but got $COUNT"
+            RC=1
+          fi
+          echo
+
+          FILES=$(git diff --cached --name-only)
+          COUNT=$(echo "$FILES" | wc -l)
+          echo -e "Staged files: $COUNT\n$FILES"
+          if [ -n "$COUNT" ] && [ "$COUNT" -ne 1 ]; then
+            echo "::error::Expected 0 staged files but got $COUNT"
+            RC=1
+          fi
+          echo
+
+          FILES=$(git diff --name-only)
+          COUNT=$(echo "$FILES" | wc -l)
+          echo -e "Unstaged files: $COUNT\n$FILES"
+          if [ -z "$COUNT" ] && [ "$COUNT" -ne 1 ]; then
+            echo "::error::Expected 1 unstaged files but got 0"
+            RC=1
+          fi
+          echo
+
+          FILES=$(git ls-files --others --exclude-standard)
+          COUNT=$(echo "$FILES" | wc -l)
+          echo -e "Untracked files: $COUNT\n$FILES"
+          if [ "$COUNT" -ne 105 ]; then
+            echo "::error::Expected 105 untracked files but got $COUNT"
+            RC=1
+          fi
+          exit "$RC"
+
+      - name: Commit real changes
+        id: commit
+        uses: ./
+        with:
+          ref: ${{ env.TEST_BRANCH }}
+          message: 'test: ${{ github.ref }} @ ${{ github.sha }}'
+          files: |
+            README.md
+            date.txt
+            !src/test.txt
+            src/*.txt
+            __tests__/**
+            .github/**
+            !${{ env.TEST_BRANCH }}/1*-*
+            ${{ env.TEST_BRANCH }}/**
+
+      - name: Verify GPG signature
+        shell: bash
+        env:
+          COMMIT: ${{ steps.commit.outputs.commit }}
+          GPG_KEY_ID: 968479A1AFF927E37D1A566BB5690EEEBB952194
+        run: |
+          git log --show-signature HEAD^..HEAD
+          curl -fSsL "https://github.com/web-flow.gpg" | gpg --import
+          echo "$GPG_KEY_ID:6" | gpg --import-ownertrust
+          git verify-commit "$COMMIT"
+
+      - name: Verify file changes
+        shell: bash
+        env:
+          COMMIT: ${{ steps.commit.outputs.commit }}
+        run: |
+          git status
+          RC=0
+
+          FILES=$(git diff-tree --no-commit-id --name-only -r "$COMMIT")
+          COUNT=$(echo "$FILES" | wc -l)
+          echo -e "Committed files: $COUNT\n$FILES"
+          if [ "$COUNT" -ne 92 ]; then
+            echo "::error::Expected 92 committed files but got $COUNT"
+            RC=1
+          fi
+          echo
+
+          FILES=$(git diff --cached --name-only)
+          COUNT=$(echo "$FILES" | wc -l)
+          echo -e "Staged files: $COUNT\n$FILES"
+          if [ "$COUNT" -ne 14 ]; then
+            echo "::error::Expected 14 staged files but got $COUNT"
+            RC=1
+          fi
+          echo
+
+          FILES=$(git diff --name-only)
+          COUNT=$(echo "$FILES" | wc -l)
+          echo -e "Unstaged files: $COUNT\n$FILES"
+          if [ -n "$COUNT" ] && [ "$COUNT" -ne 1 ]; then
+            echo "::error::Expected 0 unstaged files but got $COUNT"
+            RC=1
+          fi
+          echo
+
+          FILES=$(git ls-files --others --exclude-standard)
+          COUNT=$(echo "$FILES" | wc -l)
+          echo -e "Untracked files: $COUNT\n$FILES"
+          if [ -n "$COUNT" ] && [ "$COUNT" -ne 1 ]; then
+            echo "::error::Expected 0 untracked files but got $COUNT"
+            RC=1
+          fi
+          exit "$RC"
+
+      - name: Delete/rename previously commit files
+        shell: bash
+        run: |
+          mv date.txt date_renamed.txt
+
+      - name: Commit deleted/renamed changes
+        id: commit-remove
+        uses: ./
+        with:
+          ref: ${{ env.TEST_BRANCH }}
+          message: 'test: delete ${{ github.ref }} @ ${{ github.sha }}'
+          files: |
+            date.txt
+            date_renamed.txt
+
+      - name: Verify removed file changes
+        shell: bash
+        env:
+          COMMIT: ${{ steps.commit-remove.outputs.commit }}
+        run: |
+          git status
+          RC=0
+
+          FILES=$(git diff-tree --no-commit-id --name-only -r "$COMMIT")
+          COUNT=$(echo "$FILES" | wc -l)
+          echo -e "Committed files: $COUNT\n$FILES"
+          if [ "$COUNT" -ne 2 ]; then
+            echo "::error::Expected 2 committed files but got $COUNT"
+            RC=1
+          fi
+          echo
+
+          FILES=$(git diff --cached --name-only)
+          COUNT=$(echo "$FILES" | wc -l)
+          echo -e "Staged files: $COUNT\n$FILES"
+          if [ "$COUNT" -ne 14 ]; then
+            echo "::error::Expected 14 staged files but got $COUNT"
+            RC=1
+          fi
+          echo
+
+          FILES=$(git diff --name-only)
+          COUNT=$(echo "$FILES" | wc -l)
+          echo -e "Unstaged files: $COUNT\n$FILES"
+          if [ -n "$COUNT" ] && [ "$COUNT" -ne 1 ]; then
+            echo "::error::Expected 0 unstaged files but got $COUNT"
+            RC=1
+          fi
+          echo
+
+          FILES=$(git ls-files --others --exclude-standard)
+          COUNT=$(echo "$FILES" | wc -l)
+          echo -e "Untracked files: $COUNT\n$FILES"
+          if [ -n "$COUNT" ] && [ "$COUNT" -ne 1 ]; then
+            echo "::error::Expected 0 untracked files but got $COUNT"
+            RC=1
+          fi
+          exit "$RC"
+
+      - name: Checkout test-repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: test-repo
+
+      - name: Setup test-repo branch and files
+        shell: bash
+        run: |
+          cd test-repo
+          git checkout -b "$TEST_BRANCH-test-repo"
+          git push -u origin "$TEST_BRANCH-test-repo"
+          echo -e "Just a test" | tee -a test.txt
+          date -Iseconds | tee test-ignore.txt
+          echo "$GITHUB_RUN_ID" | tee __tests__/ignore/test-abcdef.txt
+          echo "$GITHUB_RUN_ID" | tee src/test.txt
+          echo "$GITHUB_RUN_ID" | tee src/test2.txt
+          echo "uncommitted file" | tee blah.txt
+          mkdir -p "$GITHUB_RUN_ID"
+          for i in {1..10}; do
+            echo "$i-$TEST_BRANCH-$RANDOM" | tee "$GITHUB_RUN_ID/$i-$TEST_BRANCH"
+          done
+
+      - name: Commit test-repo changes
+        id: commit-sub
+        uses: ./
+        with:
+          workspace: test-repo
+          ref: ${{ env.TEST_BRANCH }}-test-repo
+          message: 'test: ${{ github.ref }} @ ${{ github.sha }}'
+          files: |
+            *.txt
+            !src/test.txt
+            src/*.txt
+            __tests__/**
+            !${{ github.run_id }}/1*-*
+            ${{ github.run_id }}/**
+
+      - name: Verify test-repo
+        shell: bash
+        env:
+          COMMIT: ${{ steps.commit-sub.outputs.commit }}
+        run: |
+          cd test-repo
+          git status
+          RC=0
+
+          FILES=$(git diff-tree --no-commit-id --name-only -r "$COMMIT")
+          COUNT=$(echo "$FILES" | wc -l)
+          echo -e "Committed files: $COUNT\n$FILES"
+          if [ -z "$COUNT" ] && [ "$COUNT" -ne 10 ]; then
+            echo "::error::Expected 10 committed files but got $COUNT"
+            RC=1
+          fi
+          echo
+
+          FILES=$(git diff --cached --name-only)
+          COUNT=$(echo "$FILES" | wc -l)
+          echo -e "Staged files: $COUNT\n$FILES"
+          if [ "$COUNT" -ne 3 ]; then
+            echo "::error::Expected 3 staged files but got $COUNT"
+            RC=1
+          fi
+          echo
+
+          FILES=$(git diff --name-only)
+          COUNT=$(echo "$FILES" | wc -l)
+          echo -e "Unstaged files: $COUNT\n$FILES"
+          if [ -n "$COUNT" ] && [ "$COUNT" -ne 1 ]; then
+            echo "::error::Expected 0 unstaged files but got $COUNT"
+            RC=1
+          fi
+          echo
+
+          FILES=$(git ls-files --others --exclude-standard)
+          COUNT=$(echo "$FILES" | wc -l)
+          echo -e "Untracked files: $COUNT\n$FILES"
+          if [ -n "$COUNT" ] && [ "$COUNT" -ne 1 ]; then
+            echo "::error::Expected 0 untracked files but got $COUNT"
+            RC=1
+          fi
+          exit "$RC"
+
+      - name: Delete test branches and tags
+        if: always()
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" == "pull_request" ]; then
+            git checkout "${GITHUB_REF/#refs\//}" || true
+          else
+            git checkout "$GITHUB_REF_NAME" || true
+          fi
+          git push -u origin --delete "$TEST_BRANCH" || true
+          git push -u origin --delete "$TEST_BRANCH-test-repo" || true
+          git push -u origin --delete "$TEST_TAG" || true

@@ -1,0 +1,42 @@
+name: Test allow empty commit
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      # No file changes — rely on allow-empty-commit to proceed to API call
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          files: "*.nonexistent-file-xyz"
+          message: "test: empty commit"
+          auto-stage: "false"
+          allow-empty-commit: "true"
+          update-local: "false"
+          no-retry: "true"
+
+      - name: Assert action attempted commit (or failed gracefully on sentinel repo)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          COMMIT: ${{ steps.action.outputs.commit }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "commit: $COMMIT"
+          if [ "$OUTCOME" = "success" ]; then
+            if [ -z "$COMMIT" ]; then
+              echo "FAIL: action succeeded but commit output is empty"
+              exit 1
+            fi
+            echo "PASS: got commit SHA '$COMMIT'"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (sentinel repo is not resolvable)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

@@ -1,0 +1,38 @@
+name: Test no changes with if-no-commit error
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      # Do NOT create or modify any files — nothing to commit
+      # With if-no-commit=error, the action should fail when there's nothing to commit
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          files: "*.nonexistent-file-xyz"
+          message: "test: no changes error"
+          auto-stage: "false"
+          if-no-commit: "error"
+          update-local: "false"
+          no-retry: "true"
+
+      - name: Assert action failed due to no commit or sentinel repo
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed as expected (no files to commit with if-no-commit=error, or sentinel repo)"
+          elif [ "$OUTCOME" = "success" ]; then
+            echo "FAIL: action should have failed when no files match and if-no-commit=error"
+            exit 1
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

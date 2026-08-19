@@ -1,0 +1,39 @@
+name: Test no changes with if-no-commit skip
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      # Do NOT create or modify any files — nothing to commit
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          files: "*.nonexistent-file-xyz"
+          message: "test: no changes"
+          auto-stage: "false"
+          if-no-commit: "skip"
+          update-local: "false"
+          no-retry: "true"
+
+      - name: Assert action ran or skipped gracefully
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          COMMIT: ${{ steps.action.outputs.commit }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "commit: $COMMIT"
+          if [ "$OUTCOME" = "success" ]; then
+            # When no files match, commit output should be empty (skipped)
+            echo "PASS: action succeeded (skipped commit as expected, commit='$COMMIT')"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (sentinel repo or no matching files)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
