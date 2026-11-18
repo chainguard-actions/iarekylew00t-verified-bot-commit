@@ -4,8 +4,13 @@
   "version": "v2.3.5",
   "commit_sha": "42a042b0407248f3c0acac00c389e729e3476e86",
   "url": "https://github.com/IAreKyleW00t/verified-bot-commit",
-  "policy_sha": "d636be7e43ef829af6e853da6b3c7566db9f72fe",
+  "policy_sha": "374911c4be584df24e6da57af2d990570ef0f859",
   "test_policy_sha": "843adf9e4b8f85d0c08b27b9d0b09dd094b54702",
   "test_agent_version": "2",
-  "harden_agent_version": "2"
+  "harden_agent_version": "2",
+  "dist_artifact": {
+    "gcs_uri": "gs://patch-actions-node-artifacts/dist-artifacts/IAreKyleW00t/verified-bot-commit/v2.3.5/sha256-a455df5748cd767c4726cef1905b2857eedab9fbf3d6fe89c1fb4912e3e543ec.tar.gz",
+    "sha256": "a455df5748cd767c4726cef1905b2857eedab9fbf3d6fe89c1fb4912e3e543ec",
+    "size_bytes": 766998
+  }
 }
